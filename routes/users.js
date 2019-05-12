@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { addUser, getToken, login } = require('../controllers/users');
 const { Pool } = require('pg');
 
 const pool = new Pool({
@@ -9,36 +10,11 @@ const pool = new Pool({
 
 const router = express.Router();
 
-async function newUser(username, password) {
-  const salt = bcrypt.genSaltSync();
-  const hash = bcrypt.hashSync(password, salt);
-  return await pool.query(`INSERT INTO "User" (username, password) VALUES ('${username}', '${hash}');`);
-}
-
-async function getToken(id) {
-  return jwt.sign({ id }, process.env.SECRET, { expiresIn: 129600 });
-}
-
-async function login(username, password) {
-  const result = await pool.query(`SELECT id, password FROM "User" WHERE username = '${username}';`);
-  user = result.rows[0];
-  if (!bcrypt.compareSync(password, user.password)) {
-    throw new Error('Wrong password!');
-  }
-  const token = await getToken(user.id);
-  return {
-    id: user.id,
-    username,
-    token
-  };
-}
-
 router
   .post('/register', async (request, response) => {
-    const username = request.body.username;
-    const password = request.body.password;
+    const { username, password } = request.body;
     try {
-      user = await newUser(username, password);
+      user = await addUser(username, password);
     } catch (err) {
       if (err.constraint === 'unique_username') return response.json({ message: 'Username already exists.' });
     }
@@ -52,7 +28,6 @@ router
     const token = await getToken(id);
     return response.status(201).json({
       id,
-      username,
       token
     });
   })

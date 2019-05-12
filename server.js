@@ -8,6 +8,8 @@ const exjwt = require('express-jwt');
 
 const users = require('./routes/users');
 const plans = require('./routes/plans');
+const products = require('./routes/products');
+const containers = require('./routes/containers');
 
 const app = express();
 
@@ -17,21 +19,20 @@ const jwtMiddleware = exjwt({
   secret: process.env.SECRET
 });
 
-app.get('/', jwtMiddleware, (req, res) => {
-  console.log(req);
-  res.send('You are authenticated.');
-});
+app.use('/users', users);
 
-app.use(function(err, req, res, next) {
+app.use(jwtMiddleware);
+app.use('/plans', plans);
+app.use('/products', products);
+app.use('/containers', containers);
+
+app.use((err, req, res, next) => {
   if (err.name === 'UnauthorizedError') {
     res.status(401).send(err.inner);
   } else {
     next(err);
   }
 });
-
-app.use('/users', users);
-app.use('/plans', plans);
 
 app.listen(process.env.PORT, () => {
   console.log(`Server running on port ${process.env.PORT}`);
