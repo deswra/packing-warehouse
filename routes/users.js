@@ -1,6 +1,4 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { addUser, getToken, login } = require('../controllers/users');
 const { Pool } = require('pg');
 
@@ -20,7 +18,7 @@ router
     }
     let id;
     try {
-      const result = await pool.query(`SELECT id FROM "User" WHERE username = '${request.body.username}';`);
+      const result = await pool.query('SELECT id FROM "User" WHERE username = $1;', [request.body.username]);
       id = result.rows[0].id;
     } catch (err) {
       return response.json({ message: err.detail });
