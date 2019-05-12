@@ -16,7 +16,7 @@ module.exports = {
     return jwt.sign({ id }, process.env.SECRET, { expiresIn: 129600 });
   },
   async login(username, password) {
-    const result = await pool.query('SELECT id, password FROM "User" WHERE username = $1;', [username]);
+    const result = await pool.query('SELECT id::int, password FROM "User" WHERE username = $1;', [username]);
     user = result.rows[0];
     if (!bcrypt.compareSync(password, user.password)) {
       throw new Error('Wrong password!');

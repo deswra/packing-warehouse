@@ -18,7 +18,7 @@ router
     }
     let id;
     try {
-      const result = await pool.query('SELECT id FROM "User" WHERE username = $1;', [request.body.username]);
+      const result = await pool.query('SELECT id::int FROM "User" WHERE username = $1;', [request.body.username]);
       id = result.rows[0].id;
     } catch (err) {
       return response.json({ message: err.detail });
