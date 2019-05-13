@@ -39,5 +39,13 @@ module.exports = {
       [userId, contId]
     );
     return result.rows[0];
+  },
+  async getContainerList(userId, contIdList) {
+    const contIdString = contIdList.join();
+    const result = await pool.query(
+      `SELECT id::int, name, price::float, width::int, height::int, length::int FROM "Container" WHERE "userId" = $1 AND id IN (${contIdString});`,
+      [userId]
+    );
+    return result.rows;
   }
 };

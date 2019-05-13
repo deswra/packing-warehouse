@@ -1,96 +1,41 @@
 const express = require('express');
-const { Pool } = require('pg');
-
-const pool = new Pool({
-  connectionString: process.env.POSTGRE_URL
-});
+const { getPlan, addPlan } = require('../controllers/plans');
 
 const router = express.Router();
 
-function containerToWKT(width, height, length) {
-  return `POLYHEDRALSURFACE Z (
-    ((0 0 0, 0 ${height} 0, ${width} ${height} 0, ${width} 0 0, 0 0 0)),
-    ((0 0 0, 0 ${height} 0, 0 ${height} ${length}, 0 0 ${length}, 0 0 0)),
-    ((0 0 0, ${width} 0 0, ${width} 0 ${length}, 0 0 ${length}, 0 0 0)),
-    ((${width} ${height} ${length}, ${width} 0 ${length}, 0 0 ${length}, 0 ${height} ${length}, ${width} ${height} ${length})),
-    ((${width} ${height} ${length}, ${width} 0 ${length}, ${width} 0 0, ${width} ${height} 0, ${width} ${height} ${length})),
-    ((${width} ${height} ${length}, ${width} ${height} 0, 0 ${height} 0, 0 ${height} ${length}, ${width} ${height} ${length}))
-  )`;
-}
+router
+  .get('/', async (request, response) => {
+    await packing();
+    const yay = await getPlan(planId);
+    return response.json(yay);
+  })
+  .get('/:id', async (request, response) => {
+    try {
+      const result = await getPlan(parseInt(request.params.id), parseInt(request.user.id));
+      return response.status(200).json(result);
+    } catch (err) {
+      console.log(err);
+      return response.status(500).json({ message: 'Cannot get plan.' });
+    }
+  });
 
-function productToWKT(x, y, z, layoutWidth, layoutHeight, layoutLength) {
-  return `POLYHEDRALSURFACE Z (
-    ((${x} ${y} ${z}, ${x} ${y + layoutHeight} ${z}, ${x + layoutWidth} ${y + layoutHeight} ${z}, ${x +
-    layoutWidth} ${y} ${z}, ${x} ${y} ${z})),
-    ((${x} ${y} ${z}, ${x} ${y + layoutHeight} ${z}, ${x} ${y + layoutHeight} ${z + layoutLength}, ${x} ${y} ${z +
-    layoutLength}, ${x} ${y} ${z})),
-    ((${x} ${y} ${z}, ${x + layoutWidth} ${y} ${z}, ${x + layoutWidth} ${y} ${z + layoutLength}, ${x} ${y} ${z +
-    layoutLength}, ${x} ${y} ${z})),
-    ((${x + layoutWidth} ${y + layoutHeight} ${z + layoutLength}, ${x + layoutWidth} ${y} ${z +
-    layoutLength}, ${x} ${y} ${z + layoutLength}, ${x} ${y + layoutHeight} ${z + layoutLength}, ${x + layoutWidth} ${y +
-    layoutHeight} ${z + layoutLength})),
-    ((${x + layoutWidth} ${y + layoutHeight} ${z + layoutLength}, ${x + layoutWidth} ${y} ${z + layoutLength}, ${x +
-    layoutWidth} ${y} ${z}, ${x + layoutWidth} ${y + layoutHeight} ${z}, ${x + layoutWidth} ${y + layoutHeight} ${z +
-    layoutLength})),
-    ((${x + layoutWidth} ${y + layoutHeight} ${z + layoutLength}, ${x + layoutWidth} ${y +
-    layoutHeight} ${z}, ${x} ${y + layoutHeight} ${z}, ${x} ${y + layoutHeight} ${z + layoutLength}, ${x +
-    layoutWidth} ${y + layoutHeight} ${z + layoutLength}))
-  )`;
-}
-
-// Test
-const packingResult = require('../fap.json');
-const planId = 1;
-
-async function packing() {
-  let usedContainer = [];
-  await Promise.all(
-    packingResult.wrapperArray.instance.map(async container => {
-      let containerOrder = 0;
-      const containerId = parseInt(container.$.name);
-      usedContainer.push(containerId);
-      usedContainer.forEach(cont => {
-        if (cont === containerId) {
-          containerOrder++;
-        }
-      });
-      await pool.query(
-        `INSERT INTO "Plan_Container_Product" VALUES (${planId}, ${containerId}, ${containerOrder}, 0, '${containerToWKT(
-          parseInt(container.$.width),
-          parseInt(container.$.height),
-          parseInt(container.$.length)
-        )}');`
-      );
-      Promise.all(
-        container.wrap.map(async product => {
-          const productId = parseInt(product.instance[0].$.name);
-          pool.query(
-            `INSERT INTO "Plan_Container_Product" VALUES (${planId}, ${containerId}, ${containerOrder}, ${productId}, '${productToWKT(
-              parseInt(product.$.x),
-              parseInt(product.$.y),
-              parseInt(product.$.z),
-              parseInt(product.$.layoutWidth),
-              parseInt(product.$.layoutHeight),
-              parseInt(product.$.layoutLength)
-            )}');`
-          );
-        })
-      );
-    })
-  );
-}
-
-async function getPlan(planId) {
-  const { rows } = await pool.query(
-    `SELECT "planId", "containerId", "containerOrder", "productId", ST_AsText(geom) FROM "Plan_Container_Product" WHERE "planId" = ${planId};`
-  );
-  return rows;
-}
-
-router.get('/', async (request, response) => {
-  await packing();
-  const yay = await getPlan(planId);
-  return response.json(yay);
+router.post('/', async (request, response) => {
+  try {
+    const planId = await addPlan(
+      parseInt(request.user.id),
+      request.body.name,
+      request.body.description,
+      parseInt(request.body.duration),
+      parseFloat(request.body.monthCost),
+      request.body.containers,
+      request.body.products
+    );
+    const result = await getPlan(planId, parseInt(request.user.id));
+    return response.status(201).json(result);
+  } catch (err) {
+    console.log(err);
+    return response.status(500).json({ message: 'Plan has not been added.' });
+  }
 });
 
 module.exports = router;

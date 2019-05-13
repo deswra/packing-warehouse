@@ -39,5 +39,19 @@ module.exports = {
       [userId, prodId]
     );
     return result.rows[0];
+  },
+  async getProductList(userId, prodIdList) {
+    let productList = [];
+    await Promise.all(
+      prodIdList.map(async product => {
+        const result = await pool.query(
+          'SELECT id::int, name, price::float, width::int, height::int, length::int FROM "Product" WHERE id = $1 AND "userId" = $2;',
+          [product.id, userId]
+        );
+        result.rows[0].amounts = product.amounts;
+        productList.push(result.rows[0]);
+      })
+    );
+    return productList;
   }
 };
