@@ -172,13 +172,22 @@ async function addSimplePlan(
   productsPrice,
   containersPrice,
   duration,
-  monthCost
+  monthCost,
+  planId = 0
 ) {
-  const result = await pool.query(
-    'INSERT INTO "Plan" ("userId", name, description, "createdDate", "totalPrice", "productsPrice", "containersPrice", duration, "monthCost") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id::int, name, description, "createdDate", "totalPrice"::float, "productsPrice"::float, "containersPrice"::float, duration::int, "monthCost"::float;',
-    [userId, name, description, createdDate, totalPrice, productsPrice, containersPrice, duration, monthCost]
-  );
-  return result.rows[0];
+  if (planId === 0) {
+    const result = await pool.query(
+      'INSERT INTO "Plan" ("userId", name, description, "createdDate", "totalPrice", "productsPrice", "containersPrice", duration, "monthCost") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id::int, name, description, "createdDate", "totalPrice"::float, "productsPrice"::float, "containersPrice"::float, duration::int, "monthCost"::float;',
+      [userId, name, description, createdDate, totalPrice, productsPrice, containersPrice, duration, monthCost]
+    );
+    return result.rows[0];
+  } else {
+    const result = await pool.query(
+      'INSERT INTO "Plan" ("userId", name, description, "createdDate", "totalPrice", "productsPrice", "containersPrice", duration, "monthCost", id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id::int, name, description, "createdDate", "totalPrice"::float, "productsPrice"::float, "containersPrice"::float, duration::int, "monthCost"::float;',
+      [userId, name, description, createdDate, totalPrice, productsPrice, containersPrice, duration, monthCost, planId]
+    );
+    return result.rows[0];
+  }
 }
 
 async function updateCost(planId, containersPrice, totalPrice) {
@@ -261,34 +270,79 @@ async function getDetailedPlan(planId, userId) {
   return response;
 }
 
+async function getAllPlanIds(userId) {
+  const result = await pool.query('SELECT id::int FROM "Plan" WHERE "userId" = $1;', [userId]);
+  return result.rows.map(plan => plan.id);
+}
+
+async function getPlan(planId, userId) {
+  const [simplePlan, detailedPlan] = await Promise.all([
+    getSimplePlan(planId, userId),
+    getDetailedPlan(planId, userId)
+  ]);
+  simplePlan.containers = detailedPlan;
+  return simplePlan;
+}
+
+async function getPlans(userId) {
+  const planIds = await getAllPlanIds(userId);
+  let promises = [];
+  planIds.forEach(id => promises.push(getPlan(id, userId)));
+  const result = await Promise.all(promises);
+  return result;
+}
+
+async function deletePlan(planId, userId) {
+  const result = await pool.query('DELETE FROM "Plan" WHERE "userId" = $1 AND id = $2 RETURNING id::int;', [
+    userId,
+    planId
+  ]);
+  return result.rows[0];
+}
+
+async function updatePlan(planId, userId, name, description, duration, monthCost, containers, products) {
+  await deletePlan(planId, userId);
+  const result = await addPlan(userId, name, description, duration, monthCost, containers, products, planId);
+  return result;
+}
+
+async function addPlan(userId, name, description, duration, monthCost, containers, products, planId = 0) {
+  const createdDate = new Date();
+  const [containerList, productList] = await Promise.all([
+    getContainerList(userId, containers),
+    getProductList(userId, products)
+  ]);
+  // Calculate products cost
+  let productsPrice = 0;
+  productList.forEach(product => {
+    productsPrice += product.price;
+  });
+  // Add simple plan 1st time
+  const plan = await addSimplePlan(
+    userId,
+    name,
+    description,
+    createdDate,
+    0,
+    productsPrice,
+    0,
+    duration,
+    monthCost,
+    planId
+  );
+  const { query, cost } = createPlanDetailQuery(plan.id, packing(containerList, productList));
+  const containersPrice = cost;
+  const totalPrice = productsPrice + containersPrice + monthCost * duration;
+  // Insert geometries and update plan's prices
+  await Promise.all([() => pool.query(query), updateCost(plan.id, containersPrice, totalPrice)]);
+  await pool.query(query);
+  return plan.id;
+}
+
 module.exports = {
-  async getPlan(planId, userId) {
-    const [simplePlan, detailedPlan] = await Promise.all([
-      getSimplePlan(planId, userId),
-      getDetailedPlan(planId, userId)
-    ]);
-    simplePlan.containers = detailedPlan;
-    return simplePlan;
-  },
-  async addPlan(userId, name, description, duration, monthCost, containers, products) {
-    const createdDate = new Date();
-    const [containerList, productList] = await Promise.all([
-      getContainerList(userId, containers),
-      getProductList(userId, products)
-    ]);
-    // Calculate products cost
-    let productsPrice = 0;
-    productList.forEach(product => {
-      productsPrice += product.price;
-    });
-    // Add simple plan 1st time
-    const plan = await addSimplePlan(userId, name, description, createdDate, 0, productsPrice, 0, duration, monthCost);
-    const { query, cost } = createPlanDetailQuery(plan.id, packing(containerList, productList));
-    const containersPrice = cost;
-    const totalPrice = productsPrice + containersPrice + monthCost * duration;
-    // Insert geometries and update plan's prices
-    await Promise.all([() => pool.query(query), updateCost(plan.id, containersPrice, totalPrice)]);
-    await pool.query(query);
-    return plan.id;
-  }
+  getPlan,
+  getPlans,
+  deletePlan,
+  addPlan,
+  updatePlan
 };
