@@ -4,6 +4,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 const express = require('express');
 const exjwt = require('express-jwt');
+const cors = require('cors');
 // const bodyParser = require('body-parser');
 
 const users = require('./routes/users');
@@ -19,6 +20,7 @@ const jwtMiddleware = exjwt({
   secret: process.env.SECRET
 });
 
+app.use(cors());
 app.use('/users', users);
 
 app.use(jwtMiddleware);

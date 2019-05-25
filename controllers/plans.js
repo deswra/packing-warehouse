@@ -72,9 +72,9 @@ function dimensionToLayout(width, height, length, orientation) {
       layoutLength = width;
       break;
     case 3:
-      layoutWidth = length;
-      layoutHeight = width;
-      layoutLength = height;
+      layoutWidth = height;
+      layoutHeight = length;
+      layoutLength = width;
       break;
     case 4:
       layoutWidth = height;
@@ -87,9 +87,9 @@ function dimensionToLayout(width, height, length, orientation) {
       layoutLength = height;
       break;
     case 6:
-      layoutWidth = height;
-      layoutHeight = length;
-      layoutLength = width;
+      layoutWidth = length;
+      layoutHeight = width;
+      layoutLength = height;
       break;
   }
   return { layoutWidth, layoutHeight, layoutLength };
