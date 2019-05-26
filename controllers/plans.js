@@ -95,6 +95,82 @@ function dimensionToLayout(width, height, length, orientation) {
   return { layoutWidth, layoutHeight, layoutLength };
 }
 
+function findHighest(containerObject, x, y, z, width, length) {
+  let highest = 0;
+  const maxX = x + width;
+  const maxZ = z + length;
+  for (let i = 0; i < containerObject.matrix_.length; i++) {
+    const row = containerObject.matrix_[i];
+    for (let j = 0; j < row.length; j++) {
+      const { layoutWidth, layoutHeight, layoutLength } = dimensionToLayout(
+        row[j].instance.width,
+        row[j].instance.height,
+        row[j].instance.length,
+        row[j].orientation
+      );
+      const productHeight = row[j].y + layoutHeight;
+      if (
+        !(row[j].x < x && row[j].x + layoutWidth <= x) &&
+        !(row[j].x >= maxX && row[j].x + layoutWidth > maxX) &&
+        !(row[j].z < z && row[j].z + layoutLength <= z) &&
+        !(row[j].z >= maxZ && row[j].z + layoutLength > maxZ)
+      ) {
+        if (productHeight <= y && productHeight > highest) {
+          highest = productHeight;
+        }
+      }
+    }
+  }
+  return highest;
+}
+
+function fixFloating(packingResult) {
+  packingResult.forEach(container => {
+    for (let i = 0; i < container.matrix_.length; i++) {
+      const row = container.matrix_[i];
+      for (let j = 0; j < row.length; j++) {
+        const { layoutWidth, layoutHeight, layoutLength } = dimensionToLayout(
+          row[j].instance.width,
+          row[j].instance.height,
+          row[j].instance.length,
+          row[j].orientation
+        );
+        const highestSupport = findHighest(container, row[j].x, row[j].y, row[j].z, layoutWidth, layoutLength);
+        if (row[j].y > highestSupport) {
+          // Move above products down
+          const pastHeight = row[j].y + layoutHeight;
+          const distance = row[j].y - highestSupport;
+          const maxX = row[j].x + layoutWidth;
+          const maxZ = row[j].z + layoutLength;
+          for (let k = 0; k < container.matrix_.length; k++) {
+            const row2 = container.matrix_[k];
+            for (let l = 0; l < row2.length; l++) {
+              const { thisWidth, thisLength } = dimensionToLayout(
+                row2[l].instance.width,
+                row2[l].instance.height,
+                row2[l].instance.length,
+                row2[l].orientation
+              );
+              if (
+                row2[l].y >= pastHeight &&
+                row[j].x <= row2[l].x &&
+                row2[l].x + thisWidth <= maxX &&
+                row[j].z <= row2[l].z &&
+                row2[l].z + thisLength <= maxZ
+              ) {
+                row2[l].y -= distance;
+              }
+            }
+          }
+          // Move the product down
+          row[j].y = highestSupport;
+        }
+      }
+    }
+  });
+  return packingResult;
+}
+
 function createPlanDetailQuery(planId, packingResult) {
   let usedContainer = [];
   let cost = 0;
@@ -330,7 +406,9 @@ async function addPlan(userId, name, description, duration, monthCost, container
     monthCost,
     planId
   );
-  const { query, cost } = createPlanDetailQuery(plan.id, packing(containerList, productList));
+  const packingResult = packing(containerList, productList);
+  const fixedPackingResult = fixFloating(packingResult);
+  const { query, cost } = createPlanDetailQuery(plan.id, fixedPackingResult);
   const containersPrice = cost;
   const totalPrice = productsPrice + containersPrice + monthCost * duration;
   // Insert geometries and update plan's prices
